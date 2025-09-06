@@ -80,3 +80,81 @@
     accumulated-rewards: uint,
   }
 )
+
+;; Tier Level Configuration - Progressive Reward System
+(define-map TierLevels
+  uint
+  {
+    minimum-stake: uint,
+    reward-multiplier: uint,
+    features-enabled: (list 10 bool),
+  }
+)
+
+;; PRIVATE FUNCTIONS - Internal Protocol Logic
+
+;; Determines user tier based on stake amount - Tier Classification Engine
+(define-private (get-tier-info (stake-amount uint))
+  (if (>= stake-amount u10000000) ;; Platinum Tier: 10+ STX
+    {
+      tier-level: u3,
+      reward-multiplier: u200,
+    }
+    (if (>= stake-amount u5000000) ;; Gold Tier: 5+ STX
+      {
+        tier-level: u2,
+        reward-multiplier: u150,
+      }
+      {
+        tier-level: u1,
+        reward-multiplier: u100,
+      }
+      ;; Bronze Tier: 1+ STX
+    )
+  )
+)
+
+;; Calculates lock period multiplier for enhanced rewards - Time-Lock Incentivization
+(define-private (calculate-lock-multiplier (lock-period uint))
+  (if (>= lock-period u8640) ;; 2 months lock
+    u150 ;; 1.5x multiplier
+    (if (>= lock-period u4320) ;; 1 month lock
+      u125 ;; 1.25x multiplier
+      u100 ;; No lock multiplier
+    )
+  )
+)
+
+;; Computes staking rewards based on time and tier - Yield Calculation Engine
+(define-private (calculate-rewards
+    (user principal)
+    (blocks uint)
+  )
+  (let (
+      (staking-position (unwrap! (map-get? StakingPositions user) u0))
+      (user-position (unwrap! (map-get? UserPositions user) u0))
+      (stake-amount (get amount staking-position))
+      (base-rate (var-get base-reward-rate))
+      (multiplier (get rewards-multiplier user-position))
+    )
+    ;; Formula: (stake * rate * multiplier * blocks) / (100 * 144 blocks/day)
+    (/ (* (* (* stake-amount base-rate) multiplier) blocks) u14400000)
+  )
+)
+
+;; Validates proposal description meets requirements - Content Validation
+(define-private (is-valid-description (desc (string-utf8 256)))
+  (and
+    (>= (len desc) u10) ;; Minimum 10 characters
+    (<= (len desc) u256) ;; Maximum 256 characters
+  )
+)
+
+;; Validates lock period options - Time-Lock Validation
+(define-private (is-valid-lock-period (lock-period uint))
+  (or
+    (is-eq lock-period u0) ;; No lock
+    (is-eq lock-period u4320) ;; 1 month (30 days * 144 blocks)
+    (is-eq lock-period u8640) ;; 2 months (60 days * 144 blocks)
+  )
+)
