@@ -388,3 +388,55 @@
     (ok true)
   )
 )
+
+;; READ-ONLY FUNCTIONS - Protocol State Queries
+
+;; Get contract owner address - Owner Identification
+(define-read-only (get-contract-owner)
+  (ok CONTRACT-OWNER)
+)
+
+;; Get total STX pool balance - Pool Status Query
+(define-read-only (get-stx-pool)
+  (ok (var-get stx-pool))
+)
+
+;; Get current proposal count - Governance Counter Query
+(define-read-only (get-proposal-count)
+  (ok (var-get proposal-count))
+)
+
+;; Get user's complete position information - User State Query
+(define-read-only (get-user-position (user principal))
+  (ok (map-get? UserPositions user))
+)
+
+;; Get user's staking details - Staking Status Query
+(define-read-only (get-staking-position (user principal))
+  (ok (map-get? StakingPositions user))
+)
+
+;; Get proposal details by ID - Proposal Information Query
+(define-read-only (get-proposal (proposal-id uint))
+  (ok (map-get? Proposals { proposal-id: proposal-id }))
+)
+
+;; Get tier level configuration - Tier System Query
+(define-read-only (get-tier-info-by-level (tier-level uint))
+  (ok (map-get? TierLevels tier-level))
+)
+
+;; Check if contract is paused - Protocol Status Query
+(define-read-only (is-contract-paused)
+  (ok (var-get contract-paused))
+)
+
+;; Get current reward rates - Reward Configuration Query
+(define-read-only (get-reward-rates)
+  (ok {
+    base-rate: (var-get base-reward-rate),
+    bonus-rate: (var-get bonus-rate),
+    minimum-stake: (var-get minimum-stake),
+    cooldown-period: (var-get cooldown-period),
+  })
+)
