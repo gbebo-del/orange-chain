@@ -240,3 +240,95 @@
         cooldown-start: none,
         accumulated-rewards: u0,
       })
+
+      ;; Update user position with tier benefits
+      (map-set UserPositions tx-sender
+        (merge current-position {
+          stx-staked: new-total-stake,
+          tier-level: (get tier-level tier-info),
+          rewards-multiplier: (/ (* (get reward-multiplier tier-info) lock-multiplier) u100),
+          voting-power: new-total-stake,
+        })
+      )
+
+      ;; Update global STX pool
+      (var-set stx-pool (+ (var-get stx-pool) amount))
+      (ok true)
+    )
+  )
+)
+
+;; Begin unstaking process with security cooldown - Secure Withdrawal Initiation
+(define-public (initiate-unstake (amount uint))
+  (let (
+      (staking-position (unwrap! (map-get? StakingPositions tx-sender) ERR-NO-STAKE))
+      (current-amount (get amount staking-position))
+    )
+    ;; Validation checks
+    (asserts! (>= current-amount amount) ERR-INSUFFICIENT-STX)
+    (asserts! (is-none (get cooldown-start staking-position)) ERR-COOLDOWN-ACTIVE)
+
+    ;; Activate cooldown period
+    (map-set StakingPositions tx-sender
+      (merge staking-position { cooldown-start: (some stacks-block-height) })
+    )
+    (ok true)
+  )
+)
+
+;; Complete unstaking after cooldown period expires - Secure Withdrawal Completion
+(define-public (complete-unstake)
+  (let (
+      (staking-position (unwrap! (map-get? StakingPositions tx-sender) ERR-NO-STAKE))
+      (cooldown-start (unwrap! (get cooldown-start staking-position) ERR-NOT-AUTHORIZED))
+      (stake-amount (get amount staking-position))
+    )
+    ;; Verify cooldown period has elapsed
+    (asserts!
+      (>= (- stacks-block-height cooldown-start) (var-get cooldown-period))
+      ERR-COOLDOWN-ACTIVE
+    )
+
+    ;; Return STX to user
+    (try! (as-contract (stx-transfer? stake-amount tx-sender tx-sender)))
+
+    ;; Clean up user positions
+    (map-delete StakingPositions tx-sender)
+
+    ;; Update global pool
+    (var-set stx-pool (- (var-get stx-pool) stake-amount))
+    (ok true)
+  )
+)
+
+;; Create governance proposal for community voting - Democratic Proposal System
+(define-public (create-proposal
+    (description (string-utf8 256))
+    (voting-period uint)
+  )
+  (let (
+      (user-position (unwrap! (map-get? UserPositions tx-sender) ERR-NOT-AUTHORIZED))
+      (proposal-id (+ (var-get proposal-count) u1))
+    )
+    ;; Verify user has sufficient voting power
+    (asserts! (>= (get voting-power user-position) u1000000) ERR-NOT-AUTHORIZED)
+    (asserts! (is-valid-description description) ERR-INVALID-PROTOCOL)
+    (asserts! (is-valid-voting-period voting-period) ERR-INVALID-PROTOCOL)
+
+    ;; Create new proposal
+    (map-set Proposals { proposal-id: proposal-id } {
+      creator: tx-sender,
+      description: description,
+      start-block: stacks-block-height,
+      end-block: (+ stacks-block-height voting-period),
+      executed: false,
+      votes-for: u0,
+      votes-against: u0,
+      minimum-votes: u1000000,
+    })
+
+    ;; Increment proposal counter
+    (var-set proposal-count proposal-id)
+    (ok proposal-id)
+  )
+)
